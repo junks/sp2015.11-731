@@ -9,6 +9,8 @@ optparser = optparse.OptionParser()
 optparser.add_option("-b", "--bitext", dest="bitext", default="data/dev-test-train.de-en", help="Parallel corpus (default data/dev-test-train.de-en)")
 optparser.add_option("-t", "--threshold", dest="threshold", default=0.5, type="float", help="Threshold for aligning with Dice's coefficient (default=0.5)")
 optparser.add_option("-n", "--num_sentences", dest="num_sents", default=sys.maxint, type="int", help="Number of sentences to use for training and alignment")
+optparser.add_option("-i", "--EM_iterations", dest="EM_iter", default=1, type="int", help="Number of iterations of EM to use")
+
 (opts, _) = optparser.parse_args()
 
 
@@ -19,68 +21,63 @@ alignments = []
 # uniform initialization
 for (f, e) in bitext:
   m = len(e)
-
-  """
-  sys.stderr.write(str(len(f)) + " " + str(f) + "\n")  
-  sys.stderr.write(str(len(e)) + " " + str(e) + "\n")
-  sys.stderr.write("\n")
-
-  sys.stderr.write("French - English\n")
-  sys.stderr.write("Source - Target\n")
-  """
   n = len(f)
+  
+  for e_word in e:
+    alignment_table[e_word] = alignment_table.get(e_word, defaultdict(int))
 
-  sent_alignments = []
+  #sent_alignments = []
   for i in xrange(m):
     a_i = random.randint(0,n-1)
-    sent_alignments.append((a_i,i))
+    #sent_alignments.append((a_i,i))
 
     f_word = f[a_i]
     e_word = e[i]
-
-    """
-    sys.stderr.write(str(i) + "-" + str(j)+ "\t")
-    sys.stderr.write(f[i] + "-" + e[j] + "\n")
-    """
-
-    alignment_table[e_word] = alignment_table.get(e_word, {})
-    alignment_table[e_word][f_word] = alignment_table[e_word].get(f_word,0) + 1
-
+    alignment_table[e_word][f_word] += 1
 
   #print " ".join([str(i)+"-"+str(j) for i,j in sent_alignments])
 
-#pprint(alignment_table)
+for EM in xrange(opts.EM_iter):
+  alignment_table_NEW = {}
+  for (f, e) in bitext:
+    m = len(e)
+    n = len(f)
 
-for (f, e) in bitext:
-  m = len(e)
-  n = len(f)
-  sent_alignments = []
+    for e_word in e:
+      alignment_table_NEW[e_word] = alignment_table_NEW.get(e_word, defaultdict(int))
 
-  for i in xrange(m):
-    e_word = e[i]
-    #subt_able_e = {}
-    SUM = 0
+    if EM == opts.EM_iter-1:
+      sent_alignments = []
 
-    subtable = [1] * len(f) # Add-1 smoothing
-    for index,f_word in enumerate(f):
-      if f_word in alignment_table[e_word]:
+    for i in xrange(m):
+      e_word = e[i]
+
+      subtable = [0] * len(f) # Add-1 smoothing
+      for index,f_word in enumerate(f):
         subtable[index] += alignment_table[e_word][f_word]
 
-    SUM = sum(subtable)
+      SUM = sum(subtable)
+      selection = random.randint(0,SUM-1)
 
-    selection = random.randint(0,SUM-1)
-    #print "SUM", SUM
-    #print "selection", selection
+      a_i = None
+      for index, num in enumerate(subtable):
+        selection -= num
+        if selection < 0:
+          a_i = index
+          break
 
-    a_i = None
-    for index, num in enumerate(subtable):
-      #print selection, f_word, subtable_e[f_word]
-      selection -= num
+      if a_i == None:
+        sys.stderr.write("ERROR. a_i was not assigned an index (line 81)")
+        exit()
 
-      if selection < 0:
-        a_i = index
-        break
+      f_word = f[a_i]
+      alignment_table_NEW[e_word][f_word] += 1
+      if EM == opts.EM_iter-1:
+        sent_alignments.append((a_i, i))
 
-    sent_alignments.append((a_i, i))
+    if EM == opts.EM_iter-1:
+      print " ".join([str(i)+"-"+str(j) for i,j in sent_alignments]) 
+  alignment_table = alignment_table_NEW
+
   
-  print " ".join([str(i)+"-"+str(j) for i,j in sent_alignments]) 
+
