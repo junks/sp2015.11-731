@@ -18,66 +18,59 @@ bitext = [[sentence.strip().split() for sentence in pair.split(' ||| ')] for pai
 alignment_table = {}
 alignments = []
 
-# uniform initialization
-for (f, e) in bitext:
-  m = len(e)
-  n = len(f)
-  
-  for e_word in e:
-    alignment_table[e_word] = alignment_table.get(e_word, defaultdict(int))
 
-  #sent_alignments = []
-  for i in xrange(m):
-    a_i = random.randint(0,n-1)
-    #sent_alignments.append((a_i,i))
+t_f_e = {}
+for (f_s, e_s) in bitext:
+  for e in set(e_s):
+    t_f_e[e] = t_f_e.get(e, {})    
+    for f in set(f_s):
+      t_f_e[e][f] = t_f_e[e].get(f, 1.0)
 
-    f_word = f[a_i]
-    e_word = e[i]
-    alignment_table[e_word][f_word] += 1
+for e in t_f_e:
+  SUM = sum(t_f_e[e].values())
+  for f in t_f_e[e]:
+    t_f_e[e][f] /= SUM
 
-  #print " ".join([str(i)+"-"+str(j) for i,j in sent_alignments])
-
+sys.stderr.write("Finished initializing t(f|e)\n")
+sys.stderr.write("Beginning EM\n")
 for EM in xrange(opts.EM_iter):
-  alignment_table_NEW = {}
-  for (f, e) in bitext:
-    m = len(e)
-    n = len(f)
+  count_f_e = {}
+  total_e = defaultdict(int)
+  for (f_s, e_s) in bitext:
+    for f in set(f_s):
+      n_f = f_s.count(f)
+      total_s = 0
+      for e in set(e_s):
+        total_s += t_f_e[e][f] * n_f
+        count_f_e[e] = count_f_e.get(e, defaultdict(int))
+      for e in set(e_s):
+        n_e = e_s.count(e)
+        count_f_e[e][f] += t_f_e[e][f] * n_f * n_e / total_s
+        total_e[e] += t_f_e[e][f] * n_f * n_e / total_s
 
-    for e_word in e:
-      alignment_table_NEW[e_word] = alignment_table_NEW.get(e_word, defaultdict(int))
+  for e in total_e:
+    for f in count_f_e[e]:
+      t_f_e[e][f] = float(count_f_e[e][f]) / total_e[e]
 
-    if EM == opts.EM_iter-1:
-      sent_alignments = []
 
-    for i in xrange(m):
-      e_word = e[i]
+sys.stderr.write("Finished EM. Writing out alignments.\n")
+for (f_s, e_s) in bitext:
+  align_sent = []
+  for i,e in enumerate(e_s):
+    f_dist = t_f_e[e]
+    
+    SUM = 0
+    for f_word in f_s:
+      SUM += f_dist[f_word]
 
-      subtable = [0] * len(f) # Add-1 smoothing
-      for index,f_word in enumerate(f):
-        subtable[index] += alignment_table[e_word][f_word]
+    r = random.uniform(0, SUM)
 
-      SUM = sum(subtable)
-      selection = random.randint(0,SUM-1)
-
-      a_i = None
-      for index, num in enumerate(subtable):
-        selection -= num
-        if selection < 0:
-          a_i = index
-          break
-
-      if a_i == None:
-        sys.stderr.write("ERROR. a_i was not assigned an index (line 81)")
-        exit()
-
-      f_word = f[a_i]
-      alignment_table_NEW[e_word][f_word] += 1
-      if EM == opts.EM_iter-1:
-        sent_alignments.append((a_i, i))
-
-    if EM == opts.EM_iter-1:
-      print " ".join([str(i)+"-"+str(j) for i,j in sent_alignments]) 
-  alignment_table = alignment_table_NEW
-
-  
-
+    #print "r", r
+    upto = 0
+    for j,f in enumerate(f_s):
+      #print f_dist[f], upto
+      if upto + f_dist[f] > r:
+        align_sent.append((j,i))
+        break
+      upto += f_dist[f]
+  print " ".join([str(j)+"-"+str(i) for j,i in align_sent])
