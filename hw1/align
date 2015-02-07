@@ -32,8 +32,9 @@ for e in t_f_e:
     t_f_e[e][f] /= SUM
 
 sys.stderr.write("Finished initializing t(f|e)\n")
-sys.stderr.write("Beginning EM\n")
+
 for EM in xrange(opts.EM_iter):
+  sys.stderr.write("Beginning EM iteration "+str(EM)+"\n")
   count_f_e = {}
   total_e = defaultdict(int)
   for (f_s, e_s) in bitext:
