@@ -20,41 +20,45 @@ alignment_table = {}
 alignments = []
 
 f_intern = {}
-f_lookup = {}
+#f_lookup = {}
 f_increment = 0
 
 e_intern = {}
-e_lookup = {}
+#e_lookup = {}
 e_increment = 0
 
 bitext_intern = []
 
 for (f_s, e_s) in bitext:
+  f_s = ["NULL"] + f_s
+
   f_new = []
   e_new = []
   for f in f_s:
     if f_intern.get(f,None) == None:
       f_intern[f] = f_increment
-      f_lookup[f_increment] = f
+      #f_lookup[f_increment] = f
       f_increment += 1
     f_new.append(f_intern[f])
 
   for e in e_s:
     if e_intern.get(e,None) == None:
       e_intern[e] = e_increment
-      e_lookup[e_increment] = e
+      #e_lookup[e_increment] = e
       e_increment += 1
 
     e_new.append(e_intern[e])
   bitext_intern.append([f_new, e_new])
 
 
-unif_e_words = 1.0 / len(e_lookup)
+unif_e_words = 1.0 / e_increment
 t = {}
-for f_word in f_lookup:
+for f_word in xrange(f_increment):
   t[f_word] = {}
-  for e_word in e_lookup:
+  for e_word in xrange(e_increment):
     t[f_word][e_word] = unif_e_words
+
+bitext = bitext_intern
 
 sys.stderr.write("Finished initializing t(f|e)\n")
 
@@ -75,9 +79,13 @@ for EM in xrange(opts.EM_iter):
       for i,f in enumerate(f_s):
         count[f][e] += t[f][e] / total_s[e]# + (1. / (1 + abs(i-j)))
         total[f] += t[f][e] / total_s[e]# + (1. / (1 + abs(i-j)))
-  for f in f_lookup:
-    for e in e_lookup:
-      t[f][e] = count[f][e] / total[f]
+
+  t = {}
+  for f in xrange(f_increment):
+    t[f] = defaultdict(float)
+    for e in xrange(e_increment):
+      if count[f][e] > 0:
+        t[f][e] = count[f][e] / total[f]
 
 
 sys.stderr.write("Finished EM. Writing out alignments.\n")
@@ -94,7 +102,12 @@ for (f_s, e_s) in bitext_intern:
         max_p = p
         max_index = j
 
-    a_i = max_index
-    align_sent.append((a_i, i))
+    a_i = max_index - 1
+    if a_i != -1:
+      align_sent.append((a_i, i))
+    #else:
+    #  sys.stderr.write(str(a_i) + " " + str(f_s[a_i+1]) + " " + str(f_lookup[f_s[a_i+1]]) + "\n")
+
+
   print " ".join([str(i)+"-"+str(j) for i,j in align_sent])
 
