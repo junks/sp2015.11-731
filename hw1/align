@@ -1,7 +1,8 @@
 #!/usr/bin/env python
-import optparse, sys
+import optparse, sys, math
 from collections import defaultdict
 from pprint import pprint
+from math import log
 
 import random
 
@@ -18,60 +19,82 @@ bitext = [[sentence.strip().split() for sentence in pair.split(' ||| ')] for pai
 alignment_table = {}
 alignments = []
 
+f_intern = {}
+f_lookup = {}
+f_increment = 0
 
-t_f_e = {}
+e_intern = {}
+e_lookup = {}
+e_increment = 0
+
+bitext_intern = []
+
 for (f_s, e_s) in bitext:
-  for e in set(e_s):
-    t_f_e[e] = t_f_e.get(e, {})    
-    for f in set(f_s):
-      t_f_e[e][f] = t_f_e[e].get(f, 1.0)
+  f_new = []
+  e_new = []
+  for f in f_s:
+    if f_intern.get(f,None) == None:
+      f_intern[f] = f_increment
+      f_lookup[f_increment] = f
+      f_increment += 1
+    f_new.append(f_intern[f])
 
-for e in t_f_e:
-  SUM = sum(t_f_e[e].values())
-  for f in t_f_e[e]:
-    t_f_e[e][f] /= SUM
+  for e in e_s:
+    if e_intern.get(e,None) == None:
+      e_intern[e] = e_increment
+      e_lookup[e_increment] = e
+      e_increment += 1
+
+    e_new.append(e_intern[e])
+  bitext_intern.append([f_new, e_new])
+
+
+unif_e_words = 1.0 / len(e_lookup)
+t = {}
+for f_word in f_lookup:
+  t[f_word] = {}
+  for e_word in e_lookup:
+    t[f_word][e_word] = unif_e_words
 
 sys.stderr.write("Finished initializing t(f|e)\n")
 
 for EM in xrange(opts.EM_iter):
-  sys.stderr.write("Beginning EM iteration "+str(EM)+"\n")
-  count_f_e = {}
-  total_e = defaultdict(int)
-  for (f_s, e_s) in bitext:
-    for f in set(f_s):
-      n_f = f_s.count(f)
-      total_s = 0
-      for e in set(e_s):
-        total_s += t_f_e[e][f] * n_f
-        count_f_e[e] = count_f_e.get(e, defaultdict(int))
-      for e in set(e_s):
-        n_e = e_s.count(e)
-        count_f_e[e][f] += t_f_e[e][f] * n_f * n_e / total_s
-        total_e[e] += t_f_e[e][f] * n_f * n_e / total_s
+  sys.stderr.write("Beginning EM iteration "+str(EM+1)+"\n")
+  count = {}
+  total = defaultdict(int)
+  for (f_s, e_s) in bitext_intern:
+    total_s = defaultdict(int)
 
-  for e in total_e:
-    for f in count_f_e[e]:
-      t_f_e[e][f] = float(count_f_e[e][f]) / total_e[e]
+    for f in f_s:
+      count[f] = count.get(f, defaultdict(float))
+
+    for j,e in enumerate(e_s):    
+      for f in f_s:
+        total_s[e] += t[f][e]
+
+      for i,f in enumerate(f_s):
+        count[f][e] += t[f][e] / total_s[e]# + (1. / (1 + abs(i-j)))
+        total[f] += t[f][e] / total_s[e]# + (1. / (1 + abs(i-j)))
+  for f in f_lookup:
+    for e in e_lookup:
+      t[f][e] = count[f][e] / total[f]
 
 
 sys.stderr.write("Finished EM. Writing out alignments.\n")
-for (f_s, e_s) in bitext:
+for (f_s, e_s) in bitext_intern:
   align_sent = []
   for i,e in enumerate(e_s):
-    f_dist = t_f_e[e]
     
-    SUM = 0
-    for f_word in f_s:
-      SUM += f_dist[f_word]
-
-    r = random.uniform(0, SUM)
-
-    #print "r", r
-    upto = 0
+    max_p = -1
+    max_index = -1
     for j,f in enumerate(f_s):
-      #print f_dist[f], upto
-      if upto + f_dist[f] > r:
-        align_sent.append((j,i))
-        break
-      upto += f_dist[f]
-  print " ".join([str(j)+"-"+str(i) for j,i in align_sent])
+      p = t[f][e]
+      
+      if p > max_p or max_p == -1:
+        max_p = p
+        max_index = j
+
+    a_i = max_index
+    align_sent.append((a_i, i))
+  print " ".join([str(i)+"-"+str(j) for i,j in align_sent])
+
