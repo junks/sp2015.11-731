@@ -20,11 +20,9 @@ alignment_table = {}
 alignments = []
 
 f_intern = {}
-#f_lookup = {}
 f_increment = 0
 
 e_intern = {}
-#e_lookup = {}
 e_increment = 0
 
 bitext_intern = []
@@ -37,19 +35,18 @@ for (f_s, e_s) in bitext:
   for f in f_s:
     if f_intern.get(f,None) == None:
       f_intern[f] = f_increment
-      #f_lookup[f_increment] = f
       f_increment += 1
     f_new.append(f_intern[f])
 
   for e in e_s:
     if e_intern.get(e,None) == None:
       e_intern[e] = e_increment
-      #e_lookup[e_increment] = e
       e_increment += 1
 
     e_new.append(e_intern[e])
   bitext_intern.append([f_new, e_new])
 
+bitext = None
 
 unif_e_words = 1.0 / e_increment
 t = {}
@@ -58,7 +55,7 @@ for f_word in xrange(f_increment):
   for e_word in xrange(e_increment):
     t[f_word][e_word] = unif_e_words
 
-bitext = bitext_intern
+
 
 sys.stderr.write("Finished initializing t(f|e)\n")
 
