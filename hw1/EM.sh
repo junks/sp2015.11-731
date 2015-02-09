@@ -1,4 +1,5 @@
 #!/bin/sh
+N=10000
 
 rm -f results/EM_*
 rm -f outputs/output_*
@@ -8,8 +9,8 @@ touch AER.txt
 
 for i in `seq 1 5`;
 do
-    echo "time ./align -n 1000 -i $i > output.txt && cat output.txt | ./check | ./grade > results/EM_$i.txt" 
-    time ./align -n 1000 -i $i > output.txt && cat output.txt | ./check | ./grade > results/EM_$i.txt
+    echo "time ./align -n $N -i $i > output.txt && cat output.txt | ./check | ./grade > results/EM_$i.txt" 
+    time ./align -n $N -i $i > output.txt && cat output.txt | ./check | ./grade > results/EM_$i.txt
     
     echo "cp output.txt outputs/output_$i.txt"
     cp output.txt outputs/output_$i.txt
