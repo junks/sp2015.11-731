@@ -52,37 +52,45 @@ unif_e_words = 1.0 / e_increment
 t = {}
 for f_word in xrange(f_increment):
   t[f_word] = {}
-  for e_word in xrange(e_increment):
-    t[f_word][e_word] = unif_e_words
-
-
 
 sys.stderr.write("Finished initializing t(f|e)\n")
 
 for EM in xrange(opts.EM_iter):
   sys.stderr.write("Beginning EM iteration "+str(EM+1)+"\n")
+  sys.stderr.write("M STEP \n")
   count = {}
   total = defaultdict(int)
   for (f_s, e_s) in bitext_intern:
-    total_s = defaultdict(int)
-
     for f in f_s:
       count[f] = count.get(f, defaultdict(float))
 
-    for j,e in enumerate(e_s):    
-      for f in f_s:
-        total_s[e] += t[f][e]
+    for e in e_s:
+      if EM == 0:
+        SUM = sum([unif_e_words for f in f_s])
+      else:
+        SUM = sum([t[f][e] for f in f_s])
 
-      for i,f in enumerate(f_s):
-        count[f][e] += t[f][e] / total_s[e]# + (1. / (1 + abs(i-j)))
-        total[f] += t[f][e] / total_s[e]# + (1. / (1 + abs(i-j)))
+      for f in f_s:
+        if EM == 0:
+          count[f][e] += unif_e_words / SUM
+          total[f] += unif_e_words / SUM
+        else:
+          count[f][e] += t[f][e] / SUM
+          total[f] += t[f][e] / SUM
+
+      #count[f][e] += t[f][e] / total_s[e]# + (1. / (1 + abs(i-j)))
+      #total[f] += t[f][e] / total_s[e]# + (1. / (1 + abs(i-j)))
+      
+  sys.stderr.write("E STEP \n")
 
   t = {}
-  for f in xrange(f_increment):
-    t[f] = defaultdict(float)
-    for e in xrange(e_increment):
-      if count[f][e] > 0:
-        t[f][e] = count[f][e] / total[f]
+  for (f_s, e_s) in bitext_intern:
+    for f in f_s:
+      t[f] = t.get(f, {})
+      for e in e_s:
+        if count[f][e] > 0:
+          #sys.stderr.write(str(count[f][e])+"\n")
+          t[f][e] = count[f][e] / total[f]
 
 
 sys.stderr.write("Finished EM. Writing out alignments.\n")
