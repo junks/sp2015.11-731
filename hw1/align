@@ -97,12 +97,22 @@ sys.stderr.write("Finished EM. Writing out alignments.\n")
 for (f_s, e_s) in bitext_intern:
   align_sent = []
   for i,e in enumerate(e_s):
+
+    dist_SUM = 0
+    for j,f in enumerate(f_s):
+      if f == 0:
+        continue
+      dist_SUM += (1. / (1 + abs(i-j)))**2
     
     max_p = -1
     max_index = -1
     for j,f in enumerate(f_s):
-      p = t[f][e]
-      
+      p = t[f][e] 
+
+      if f != 0:
+        p_dist = (1. / (1 + abs(i-j)))**2 / dist_SUM
+        p *= p_dist
+
       if p > max_p or max_p == -1:
         max_p = p
         max_index = j
