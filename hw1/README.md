@@ -1,3 +1,16 @@
+I implemented IBM model 1.
+
+After many iterations of EM, I could not quite achieve the baseline. 
+So I added in another model that encouraged alignments in similar positions of the sentence.
+
+The formula for which was (1 / abs(i-j))^2, properly normalizing for all i,j of the source and target sentences.
+I took both alignment models and multiplied their probabilities together. That was enough to get me over the baseline.
+
+
+
+
+
+
 There are three Python programs here (`-h` for usage):
 
  - `./align` aligns words using Dice's coefficient.
