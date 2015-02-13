@@ -6,6 +6,7 @@ So I added in another model that encouraged alignments in similar positions of t
 The formula for which was (1 / abs(i-j))^2, properly normalizing for all i,j of the source and target sentences.
 I took both alignment models and multiplied their probabilities together. That was enough to get me over the baseline.
 
+I also lowercased the letters. Which gave me a tiny tiny improvement.
 
 
 
