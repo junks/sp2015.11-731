@@ -1,13 +1,38 @@
 #!/usr/bin/env python
 import argparse # optparse is deprecated
 from itertools import islice # slicing for iterators
- 
-# DRY
+import sys
+
+from gensim.models.word2vec import Word2Vec
+
+
+
 def word_matches(h, ref):
     return sum(1 for w in h if w in ref)
     # or sum(w in ref for w in f) # cast bool -> int
     # or sum(map(ref.__contains__, h)) # ugly!
- 
+
+
+def precision_recall(h, ref):
+    precision = 0.0
+    word_matches = {}
+
+    for word in h:
+        if word in ref:
+            precision += 1
+            #word_matches[word] = word_matches.get(word, 0) + 1
+    precision /= len(h)
+
+    recall = 0.0
+    hset = set(h)
+    for word in ref:
+        if word in hset:
+            recall += 1
+    recall /= len(ref)
+
+    return precision, recall
+
+
 def main():
     parser = argparse.ArgumentParser(description='Evaluate translation hypotheses.')
     # PEP8: use ' and not " for strings
@@ -15,23 +40,87 @@ def main():
             help='input file (default data/train-test.hyp1-hyp2-ref)')
     parser.add_argument('-n', '--num_sentences', default=None, type=int,
             help='Number of hypothesis pairs to evaluate')
+    parser.add_argument('-l', '--LAMBDA', default=None)
+    parser.add_argument('-e', '--EPSILON',default=None)
+    parser.add_argument('-m','--modelfilename', default="data/vectors.bin")
+
     # note that if x == [1, 2, 3], then x[:None] == x[:] == x (copy); no need for sys.maxint
     opts = parser.parse_args()
+
+    bin_filename = opts.modelfilename
+    
+    sys.stderr.write("Initializing word2vec model...\n")
+    word2vec_model  = Word2Vec.load_word2vec_format(bin_filename, binary=True)
+    word2vec_model.init_sims(replace=True)
+    
+    sys.stderr.write("Finished. Word2vec model ready. \n")
+
+
+    LAMBDA = 0.9
+    EPSILON = 0.0
+
+
+    if opts.LAMBDA != None:
+        LAMBDA = float(opts.LAMBDA)
+    
+    if opts.EPSILON != None:
+        EPSILON = float(opts.EPSILON)
+
  
     # we create a generator and avoid loading all sentences into a list
     def sentences():
         with open(opts.input) as f:
             for pair in f:
                 yield [sentence.strip().split() for sentence in pair.split(' ||| ')]
- 
+
+
     # note: the -n option does not work in the original code
     for h1, h2, ref in islice(sentences(), opts.num_sentences):
+        #sys.stderr.write(str(h1)+"\n")
+        #sys.stderr.write(str(h2)+"\n")
+        #sys.stderr.write(str(ref)+"\n")
+        #sys.stderr.write("\n")
+
         rset = set(ref)
+        hset1 = set(h1)
+        hset2 = set(h2)
+
         h1_match = word_matches(h1, rset)
         h2_match = word_matches(h2, rset)
-        print(-1 if h1_match > h2_match else # \begin{cases}
-                (0 if h1_match == h2_match
-                    else 1)) # \end{cases}
+
+        h1_prec, h1_recall = precision_recall(h1, rset)
+        h2_prec, h2_recall = precision_recall(h2, rset)
+
+        F_MEASURE1 = 0
+        if h1_prec != 0 or h1_recall != 0:
+            F_MEASURE1 = (h1_prec * h1_recall) / (LAMBDA)*h1_prec + (1 - LAMBDA)*h1_recall
+        F_MEASURE2 = 0
+        if h2_prec != 0 or h2_recall != 0:
+            F_MEASURE2 = (h2_prec * h2_recall) / (LAMBDA)*h2_prec + (1 - LAMBDA)*h2_recall
+
+        #print(F_MEASURE1, "\t\t", h1_prec, h1_recall)
+        #print(F_MEASURE2, "\t\t",h2_prec, h2_recall)
+
+        try:
+            # The problem is that all sentences are OOV...
+            hlist1 = list(hset1)[1:2]
+            rlist = list(rset)[1:2]
+            print word2vec_model.n_similarity(hlist1, rset)
+        except(KeyError):
+            pass
+
+        """temp
+        if (F_MEASURE1 - F_MEASURE2) > EPSILON:
+            print(-1)
+        elif -(F_MEASURE1 - F_MEASURE2) > EPSILON:
+            print(1)
+        else:
+            print(0)
+        """
+
+        #print(-1 if h1_match > h2_match else # \begin{cases}
+        #(0 if h1_match == h2_match
+        #else 1)) # \end{cases}
  
 # convention to allow import of this file as a module
 if __name__ == '__main__':
