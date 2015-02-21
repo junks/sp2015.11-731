@@ -12,6 +12,28 @@ def word_matches(h, ref):
     # or sum(w in ref for w in f) # cast bool -> int
     # or sum(map(ref.__contains__, h)) # ugly!
 
+def word2vec_similarity(hset, rset, model):
+
+    similarity = 0
+    for h in hset:
+        try:
+            model[h]
+        except Exception, key:
+            continue
+        
+        max_sim = 0
+        for r in rset:
+            try:
+                model[r]
+            except Exception, key:
+                continue
+
+            temp_sim = model.similarity(h,r)
+            if temp_sim > max_sim:
+                max_sim = temp_sim
+        similarity += max_sim
+
+    return similarity
 
 def precision_recall(h, ref):
     precision = 0.0
@@ -74,6 +96,8 @@ def main():
                 yield [sentence.strip().split() for sentence in pair.split(' ||| ')]
 
 
+
+
     # note: the -n option does not work in the original code
     for h1, h2, ref in islice(sentences(), opts.num_sentences):
         #sys.stderr.write(str(h1)+"\n")
@@ -85,8 +109,10 @@ def main():
         hset1 = set(h1)
         hset2 = set(h2)
 
+        """
         h1_match = word_matches(h1, rset)
         h2_match = word_matches(h2, rset)
+        """
 
         h1_prec, h1_recall = precision_recall(h1, rset)
         h2_prec, h2_recall = precision_recall(h2, rset)
@@ -98,18 +124,7 @@ def main():
         if h2_prec != 0 or h2_recall != 0:
             F_MEASURE2 = (h2_prec * h2_recall) / (LAMBDA)*h2_prec + (1 - LAMBDA)*h2_recall
 
-        #print(F_MEASURE1, "\t\t", h1_prec, h1_recall)
-        #print(F_MEASURE2, "\t\t",h2_prec, h2_recall)
-
-        try:
-            # The problem is that all sentences are OOV...
-            hlist1 = list(hset1)[1:2]
-            rlist = list(rset)[1:2]
-            print word2vec_model.n_similarity(hlist1, rset)
-        except(KeyError):
-            pass
-
-        """temp
+        """
         if (F_MEASURE1 - F_MEASURE2) > EPSILON:
             print(-1)
         elif -(F_MEASURE1 - F_MEASURE2) > EPSILON:
@@ -118,10 +133,30 @@ def main():
             print(0)
         """
 
+        #print(F_MEASURE1, "\t\t", h1_prec, h1_recall)
+        #print(F_MEASURE2, "\t\t",h2_prec, h2_recall)
+
+        sim1 = word2vec_similarity(hset1, rset, word2vec_model)
+        sim2 = word2vec_similarity(hset2, rset, word2vec_model)
+        
+        #print sim1, sim2
+
         #print(-1 if h1_match > h2_match else # \begin{cases}
         #(0 if h1_match == h2_match
         #else 1)) # \end{cases}
- 
+
+        if sim1 > sim2 and F_MEASURE1 > F_MEASURE2:
+            print(-1)
+        elif sim1 < sim2 and F_MEASURE1 < F_MEASURE2:
+            print(1)
+        elif len(h1) > len(h2):
+            print(-1)
+        elif len(h1) < len(h2):
+            print(1)
+        else:
+            print(0)
+
+
 # convention to allow import of this file as a module
 if __name__ == '__main__':
     main()
