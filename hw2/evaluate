@@ -14,13 +14,15 @@ def word_matches(h, ref):
 
 def word2vec_similarity(hset, rset, model):
 
-    similarity = 0
+    similarity = 0.0
+    Z = 0
     for h in hset:
         try:
             model[h]
         except Exception, key:
             continue
-        
+
+        Z += 1        
         max_sim = 0
         for r in rset:
             try:
@@ -32,6 +34,9 @@ def word2vec_similarity(hset, rset, model):
             if temp_sim > max_sim:
                 max_sim = temp_sim
         similarity += max_sim
+
+    if Z > 0:
+        similarity = similarity / Z
 
     return similarity
 
