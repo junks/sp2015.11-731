@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 import argparse # optparse is deprecated
 from itertools import islice # slicing for iterators
-import sys
+import sys, copy
 
-from gensim.models.word2vec import Word2Vec
+#from gensim.models.word2vec import Word2Vec
 
-
+#determiners = ["the", "a", "of"]
 
 def word_matches(h, ref):
     return sum(1 for w in h if w in ref)
@@ -51,13 +51,18 @@ def precision_recall(h, ref):
     precision /= len(h)
 
     recall = 0.0
-    hset = set(h)
     for word in ref:
-        if word in hset:
+        if word in h:
             recall += 1
     recall /= len(ref)
 
     return precision, recall
+
+def FMEASURE(precision, recall, LAMBDA):
+    F_MEASURE = 0.0
+    if precision != 0 or recall != 0:
+        F_MEASURE = (precision * recall) / (LAMBDA)*precision + (1 - LAMBDA)*recall
+    return F_MEASURE
 
 
 def main():
@@ -70,29 +75,38 @@ def main():
     parser.add_argument('-l', '--LAMBDA', default=None)
     parser.add_argument('-e', '--EPSILON',default=None)
     parser.add_argument('-m','--modelfilename', default="data/vectors.bin")
+    parser.add_argument("-g", "--gold", default="data/train.gold")
+    parser.add_argument("-j", "--errorsfile", default="errors.txt")
+    parser.add_argument("-k", "--goodsfile", default="goods.txt")
 
     # note that if x == [1, 2, 3], then x[:None] == x[:] == x (copy); no need for sys.maxint
     opts = parser.parse_args()
 
+    """
     bin_filename = opts.modelfilename
-    
     sys.stderr.write("Initializing word2vec model...\n")
     word2vec_model  = Word2Vec.load_word2vec_format(bin_filename, binary=True)
     word2vec_model.init_sims(replace=True)
-    
     sys.stderr.write("Finished. Word2vec model ready. \n")
+    """
 
+    gold = open(opts.gold, "r").readlines()
+    errors = open(opts.errorsfile, "w")
+    errorcount = 0
+    goods = open(opts.goodsfile, "w")
+    
+    length_map = {}
+    error_map = open("error_map.txt", "w")
 
+    
     LAMBDA = 0.9
-    EPSILON = 0.0
-
+    EPSILON = 0.0001
 
     if opts.LAMBDA != None:
         LAMBDA = float(opts.LAMBDA)
     
     if opts.EPSILON != None:
         EPSILON = float(opts.EPSILON)
-
  
     # we create a generator and avoid loading all sentences into a list
     def sentences():
@@ -101,55 +115,100 @@ def main():
                 yield [sentence.strip().split() for sentence in pair.split(' ||| ')]
 
 
-
-
+    g = 0
+    CUTOFF = 5
     # note: the -n option does not work in the original code
     for h1, h2, ref in islice(sentences(), opts.num_sentences):
+        h1_cut = [x[:CUTOFF] for x in h1]
+        h2_cut = [x[:CUTOFF] for x in h2]
+        ref_cut = [x[:CUTOFF] for x in ref]
+
+        """
+        if len(ref) <= 4:
+            h1 = [x.lower() for x in h1]
+            h2 = [x.lower() for x in h2]
+            ref = [x.lower() for x in ref]
+        """
+
         #sys.stderr.write(str(h1)+"\n")
         #sys.stderr.write(str(h2)+"\n")
         #sys.stderr.write(str(ref)+"\n")
         #sys.stderr.write("\n")
 
-        rset = set(ref)
-        hset1 = set(h1)
-        hset2 = set(h2)
+        h1_prec, h1_recall = precision_recall(h1_cut, ref_cut)
+        h2_prec, h2_recall = precision_recall(h2_cut, ref_cut)
 
-        """
-        h1_match = word_matches(h1, rset)
-        h2_match = word_matches(h2, rset)
-        """
+        F_MEASURE1 = FMEASURE(h1_prec, h1_recall, LAMBDA)
+        F_MEASURE2 = FMEASURE(h2_prec, h2_recall, LAMBDA)
 
-        h1_prec, h1_recall = precision_recall(h1, rset)
-        h2_prec, h2_recall = precision_recall(h2, rset)
+        h1_prec, h1_recall = precision_recall(h1, ref)
+        h2_prec, h2_recall = precision_recall(h2, ref)
+        F_MEASURE1 += FMEASURE(h1_prec, h1_recall, LAMBDA)
+        F_MEASURE2 += FMEASURE(h2_prec, h2_recall, LAMBDA)
 
-        F_MEASURE1 = 0
-        if h1_prec != 0 or h1_recall != 0:
-            F_MEASURE1 = (h1_prec * h1_recall) / (LAMBDA)*h1_prec + (1 - LAMBDA)*h1_recall
-        F_MEASURE2 = 0
-        if h2_prec != 0 or h2_recall != 0:
-            F_MEASURE2 = (h2_prec * h2_recall) / (LAMBDA)*h2_prec + (1 - LAMBDA)*h2_recall
+        choice = 0
+        diff = F_MEASURE1 - F_MEASURE2
+        if diff > EPSILON or -diff > EPSILON:
+            if diff > EPSILON:
+                choice = -1
+            elif -diff > EPSILON:
+                choice = 1
+            print choice
+            continue
 
-        """
-        if (F_MEASURE1 - F_MEASURE2) > EPSILON:
-            print(-1)
-        elif -(F_MEASURE1 - F_MEASURE2) > EPSILON:
-            print(1)
+
+
+        if len(h1) > len(h2):
+            choice = -1
+        elif len(h1) < len(h2):
+            choice = 1
         else:
-            print(0)
-        """
+            choice = 0
+
+        # 1 Run a language model
+        # 2 Sentiment analysis
+
+        #choice = 0
+
+        print choice
+
+        if g < len(gold):
+            string = str(choice) + " " + str(gold[g].strip()) + "\n"
+            string += str(F_MEASURE1) + " " + str(F_MEASURE2) +  " = " + str(abs(F_MEASURE1 - F_MEASURE2)) + "\n"
+            string += str(F_MEASURE1 / len(h1)) + " " + str(F_MEASURE2 / len(h2)) + " = " + str(abs(F_MEASURE1 / len(h1) - F_MEASURE2 / len(h2))) + "\n"
+            string += "\n"
+            string += " ".join(h1) + "\n"
+            string += "-"*60+"\n"
+            string += " ".join(h2) + "\n"
+            string += "-"*60+"\n"
+            string += " ".join(ref) + "\n"
+            string += "="*60+"\n\n"
+                
+            if choice != int(gold[g]):
+                errors.write(string)
+                length_map[len(ref)] = length_map.get(len(ref), 0) + 1
+
+                if len(ref) <= 2:
+                    sys.stderr.write(string)
+
+
+                errorcount += 1
+            else:
+                goods.write(string)
+
 
         #print(F_MEASURE1, "\t\t", h1_prec, h1_recall)
         #print(F_MEASURE2, "\t\t",h2_prec, h2_recall)
 
-        sim1 = word2vec_similarity(hset1, rset, word2vec_model)
-        sim2 = word2vec_similarity(hset2, rset, word2vec_model)
-        
+        #sim1 = word2vec_similarity(hset1, rset, word2vec_model)
+        #sim2 = word2vec_similarity(hset2, rset, word2vec_model)
         #print sim1, sim2
 
         #print(-1 if h1_match > h2_match else # \begin{cases}
         #(0 if h1_match == h2_match
         #else 1)) # \end{cases}
 
+        """
         if sim1 > sim2 and F_MEASURE1 > F_MEASURE2:
             print(-1)
         elif sim1 < sim2 and F_MEASURE1 < F_MEASURE2:
@@ -160,8 +219,15 @@ def main():
             print(1)
         else:
             print(0)
+        """
+        g += 1
 
-
+    sys.stderr.write("ERRORS: "+str(errorcount)+"\n")
+    for key in length_map:
+        error_map.write(str(key) + ": " + str(length_map[key]) + "\n")
+    
 # convention to allow import of this file as a module
 if __name__ == '__main__':
     main()
+
+    
