@@ -1,7 +1,16 @@
 #!/usr/bin/env python
 import argparse # optparse is deprecated
 from itertools import islice # slicing for iterators
-import sys, copy
+import sys, copy, string, codecs
+import kenlm
+from textblob import TextBlob
+
+# Language model I trained on: 
+# English BNews (~60,000 sentences) 
+# + PTB sections 2-22 (~18,000 sentences)
+# + the ref sentences (~50,000 sentences)
+LM = kenlm.LanguageModel("data/text.binary")
+exclude = set(string.punctuation)
 
 #from gensim.models.word2vec import Word2Vec
 
@@ -90,7 +99,7 @@ def main():
     sys.stderr.write("Finished. Word2vec model ready. \n")
     """
 
-    gold = open(opts.gold, "r").readlines()
+    gold = codecs.open(opts.gold, "r", "utf8").readlines()
     errors = open(opts.errorsfile, "w")
     errorcount = 0
     goods = open(opts.goodsfile, "w")
@@ -98,6 +107,7 @@ def main():
     length_map = {}
     error_map = open("error_map.txt", "w")
 
+    semafor_sentences = codecs.open("output.raw.txt", "r", "utf8")
     
     LAMBDA = 0.9
     EPSILON = 0.0001
@@ -119,16 +129,25 @@ def main():
     CUTOFF = 5
     # note: the -n option does not work in the original code
     for h1, h2, ref in islice(sentences(), opts.num_sentences):
+        h1_sem = semafor_sentences.next()
+        h2_sem = semafor_sentences.next()
+        ref_sem = semafor_sentences.next()
+
+        #h1 = h1_sem.split()
+        #h2 = h2_sem.split()
+        #ref = ref_sem.split()
+
         h1_cut = [x[:CUTOFF] for x in h1]
         h2_cut = [x[:CUTOFF] for x in h2]
         ref_cut = [x[:CUTOFF] for x in ref]
 
-        """
+
+
         if len(ref) <= 4:
             h1 = [x.lower() for x in h1]
             h2 = [x.lower() for x in h2]
             ref = [x.lower() for x in ref]
-        """
+
 
         #sys.stderr.write(str(h1)+"\n")
         #sys.stderr.write(str(h2)+"\n")
@@ -145,23 +164,53 @@ def main():
         h2_prec, h2_recall = precision_recall(h2, ref)
         F_MEASURE1 += FMEASURE(h1_prec, h1_recall, LAMBDA)
         F_MEASURE2 += FMEASURE(h2_prec, h2_recall, LAMBDA)
+        F_diff = F_MEASURE1 - F_MEASURE2
+
+        score1, score2 = (None,None)
+        h_string1 = " ".join(h1)
+        #h_string1 = "".join(ch for ch in h_string1 if ch not in exclude)
+        
+        h_string2 = " ".join(h2)
+        #h_string2 = "".join(ch for ch in h_string2 if ch not in exclude)
+
+        score1 = LM.score(h1_sem)
+        score2 = LM.score(h2_sem)
+        score_diff = abs(score1 - score2)
+
+        pol1 = TextBlob(h1_sem).sentiment.polarity
+        pol2 = TextBlob(h2_sem).sentiment.polarity
+        pol3 = TextBlob(ref_sem).sentiment.polarity
 
         choice = 0
-        diff = F_MEASURE1 - F_MEASURE2
-        if diff > EPSILON or -diff > EPSILON:
-            if diff > EPSILON:
+        if (pol3 > 0 and ((pol1 < 0 and pol2 > 0) or (pol1 > 0 and pol2 < 0)) or (pol3 < 0 and ((pol1 > 0 and pol2 < 0) or (pol1 < 0 and pol2 > 0)))):
+            """if pol3 > 0:
+                if pol1 > 0:
+                    choice = -1
+                if pol2 > 0:
+                    choice = 1
+            if pol3 < 0:
+                if pol1 < 0:
+                    choice = -1
+                if pol2 < 0:
+                    choice = 1
+            """
+            choice = 0
+            sys.stderr.write("CHOICE: " + str(choice) + "\n")
+        if F_diff > EPSILON or -F_diff > EPSILON:
+            if F_diff > EPSILON:
                 choice = -1
-            elif -diff > EPSILON:
+            else:
                 choice = 1
-            print choice
-            continue
-
-
-
-        if len(h1) > len(h2):
-            choice = -1
-        elif len(h1) < len(h2):
-            choice = 1
+        elif score_diff > 0.5:
+            if score1 > score2:
+                choice = -1
+            else:
+                choice = 1
+        elif abs(len(h1) - len(h2)) > 0:
+            if len(h1) > len(h2):
+                choice = -1
+            else:
+                choice = 1
         else:
             choice = 0
 
@@ -174,8 +223,9 @@ def main():
 
         if g < len(gold):
             string = str(choice) + " " + str(gold[g].strip()) + "\n"
-            string += str(F_MEASURE1) + " " + str(F_MEASURE2) +  " = " + str(abs(F_MEASURE1 - F_MEASURE2)) + "\n"
-            string += str(F_MEASURE1 / len(h1)) + " " + str(F_MEASURE2 / len(h2)) + " = " + str(abs(F_MEASURE1 / len(h1) - F_MEASURE2 / len(h2))) + "\n"
+            string += "FMEASURE: " + str(F_MEASURE1) + " " + str(F_MEASURE2) +  " = " + str(abs(F_MEASURE1 - F_MEASURE2)) + "\n"
+            string += "AVG FMEASURE: " + str(F_MEASURE1 / (len(h1)*2)) + " " + str(F_MEASURE2 / (len(h2)*2)) + " = " + str(abs(F_MEASURE1 / (len(h1)*2) - F_MEASURE2 / (len(h2)*2))) + "\n"
+            string += "LM SCORE: " + str(score1) + " " + str(score2) + " = " + str(score_diff) + "\n"
             string += "\n"
             string += " ".join(h1) + "\n"
             string += "-"*60+"\n"
@@ -188,7 +238,7 @@ def main():
                 errors.write(string)
                 length_map[len(ref)] = length_map.get(len(ref), 0) + 1
 
-                if len(ref) <= 2:
+                if len(ref) > 2 and len(ref) <= 5:
                     sys.stderr.write(string)
 
 
