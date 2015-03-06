@@ -1,3 +1,16 @@
+
+Light semantic parsing: SEMAFOR
+I ran SEMAFOR, and tried to measure FScore on the frames of the hypothesis and reference sentences. This was pretty slow, and didn't seem to work very well.
+
+Language Model: KenLM
+I used the score from a language model via KenLM. I trained it using data I had from Penn Treebank, BNews, and the reference sentences of this task. I got modest improvements from this.
+
+Sentiment Analysis: Text Blob
+I tried running Sentiment Analysis from using the Text Blob package. The idea was that if the hypothesis sentiments disagreed with each other, we should take the one that matches the reference sentiment. This didn't seem to help very much.
+
+
+
+
 There are three Python programs here (`-h` for usage):
 
  - `./evaluate` evaluates pairs of MT output hypotheses relative to a reference translation using counts of matched words
