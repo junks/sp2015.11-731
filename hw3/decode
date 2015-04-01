@@ -1,9 +1,95 @@
 #!/usr/bin/env python
-import argparse
-import sys
-import models
-import heapq
+import argparse, sys, models, heapq, itertools
 from collections import namedtuple
+
+def extract_english_recursive(h):
+        return '' if h.predecessor is None else '%s%s ' % (extract_english_recursive(h.predecessor), h.phrase.english)
+
+def extract_tm_logprob(h):
+    return 0.0 if h.predecessor is None else h.phrase.logprob + extract_tm_logprob(h.predecessor)
+    
+def printerr(string):
+    sys.stderr.write(str(string)+"\n")
+
+def permute_span(string_list, span, distance, num=1):
+    permutations = set([string_list])
+
+    for i in xrange(span, len(string_list)):
+        x = string_list[:i-span] + string_list[i:i+distance] + string_list[i-span:i] + string_list[i+distance:]
+        permutations.add(x)
+
+    if num-1 > 0:
+        for item in list(permutations):
+            new_permutes = permute_span(item, span, distance, num-1)
+            for new in new_permutes:
+                permutations.add(new)
+    return permutations
+            
+def permute(string_list, num=1):
+    permutations = set([string_list])
+
+    for i in xrange(1,len(string_list)):
+        x = string_list[:i-1] + string_list[i:i+1] + string_list[i-1:i] + string_list[i+1:]
+        permutations.add(x)
+    #for i in xrange(2,len(string_list)):
+    #    x = string_list[:i-2] + string_list[i:i+1] + string_list[i-1:i] + string_list[i-2:i-1] + string_list[i+1:]
+    #    permutations.add(x)
+
+    if num-1 > 0:
+        for item in list(permutations):
+            new_permutes = permute(item, num-1)
+            for new in new_permutes:
+                permutations.add(new)
+    return permutations
+
+def tracePhrase(hyp, phrase):
+    logprob = hyp.logprob + phrase.logprob
+    lm_state = hyp.lm_state
+    for word in phrase.english.split():
+        (lm_state, word_logprob) = lm.score(lm_state, word)
+        logprob += word_logprob
+    return logprob, lm_state
+
+def run(f):
+    sent_permutations = list(permute_span(f,1,1,2)) + list(permute_span(f,1,2,1)) + list(permute_span(f,2,1,2)) + list(permute_span(f,2,2,1)) + list(permute_span(f,3,1,1)) + list(permute_span(f,3,2,1))
+    initial_hypothesis = hypothesis(0.0, lm.begin(), None, None)
+
+    stackstacks = []
+    for f in sent_permutations:
+        stacks = [{} for _ in f] + [{}]
+        stacks[0][lm.begin()] = initial_hypothesis
+    
+        for i, stack in enumerate(stacks[:-1]):
+        # extend the top s hypotheses in the current stack
+            for h in heapq.nlargest(opts.s, stack.itervalues(), key=lambda h: h.logprob): # prune
+                for j in xrange(i+1,len(f)+1):
+                    for phrase in tm.get(f[i:j], []):
+                        logprob, lm_state = tracePhrase(h, phrase)
+                        logprob += lm.end(lm_state) if j == len(f) else 0.0
+                        new_hypothesis = hypothesis(logprob, lm_state, h, phrase)
+                        if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob:
+                            stacks[j][lm_state] = new_hypothesis
+        stackstacks.append((f,stacks))
+        
+    # find best translation by looking at the best scoring hypothesis
+    # on the last stack
+    maxWinner = None
+    bestSent = None
+    for f,stacks in stackstacks:
+        if not stacks[-1]:
+            continue
+        winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
+
+        if maxWinner == None or winner.logprob > maxWinner.logprob:
+            maxWinner = winner
+            bestSent = f
+    winner = maxWinner
+    return (f,winner)
+    
+
+
+
+
 
 parser = argparse.ArgumentParser(description='Simple phrase based decoder.')
 parser.add_argument('-i', '--input', dest='input', default='data/input', help='File containing sentences to translate (default=data/input)')
@@ -20,44 +106,31 @@ sys.stderr.write('Decoding %s...\n' % (opts.input,))
 input_sents = [tuple(line.strip().split()) for line in open(opts.input).readlines()[:opts.num_sents]]
 
 hypothesis = namedtuple('hypothesis', 'logprob, lm_state, predecessor, phrase')
-for f in input_sents:
-    # The following code implements a DP monotone decoding
-    # algorithm (one that doesn't permute the target phrases).
-    # Hence all hypotheses in stacks[i] represent translations of 
-    # the first i words of the input sentence.
-    # HINT: Generalize this so that stacks[i] contains translations
-    # of any i words (remember to keep track of which words those
-    # are, and to estimate future costs)
-    initial_hypothesis = hypothesis(0.0, lm.begin(), None, None)
 
-    stacks = [{} for _ in f] + [{}]
-    stacks[0][lm.begin()] = initial_hypothesis
-    for i, stack in enumerate(stacks[:-1]):
-        # extend the top s hypotheses in the current stack
-        for h in heapq.nlargest(opts.s, stack.itervalues(), key=lambda h: h.logprob): # prune
-            for j in xrange(i+1,len(f)+1):
-                if f[i:j] in tm:
-                    for phrase in tm[f[i:j]]:
-                        logprob = h.logprob + phrase.logprob
-                        lm_state = h.lm_state
-                        for word in phrase.english.split():
-                            (lm_state, word_logprob) = lm.score(lm_state, word)
-                            logprob += word_logprob
-                        logprob += lm.end(lm_state) if j == len(f) else 0.0
-                        new_hypothesis = hypothesis(logprob, lm_state, h, phrase)
-                        if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob: # second case is recombination
-                            stacks[j][lm_state] = new_hypothesis 
+for sent_num, f in enumerate(input_sents):
+    prevbest = None
+    prevbest_sent = None
+    
+    f,winner = run(f)
+    while prevbest == None or prevbest.logprob < winner.logprob:
+        prevbest = winner
+        prevbest_sent = f
+        
+        f,winner = run(f)
+    
+    english = extract_english_recursive(prevbest)
+    printerr(str(sent_num) + " " + " ".join(prevbest_sent))
+    printerr(english)
+    printerr("\n")
+    
+    print english
 
-    # find best translation by looking at the best scoring hypothesis
-    # on the last stack
-    winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
-    def extract_english_recursive(h):
-        return '' if h.predecessor is None else '%s%s ' % (extract_english_recursive(h.predecessor), h.phrase.english)
-    print extract_english_recursive(winner)
-
+    
     if opts.verbose:
-        def extract_tm_logprob(h):
-            return 0.0 if h.predecessor is None else h.phrase.logprob + extract_tm_logprob(h.predecessor)
         tm_logprob = extract_tm_logprob(winner)
         sys.stderr.write('LM = %f, TM = %f, Total = %f\n' % 
-            (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
+                         (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
+
+
+
+
