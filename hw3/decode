@@ -51,8 +51,7 @@ def tracePhrase(hyp, phrase):
     return logprob, lm_state
 
 def run(f):
-    sent_permutations = list(permute_span(f,1,1,3)) + list(permute_span(f,2,2,1))
-    #+ list(permute_span(f,2,1,1)) + list(permute_span(f,3,3,1)) + list(permute_span(f,3,2,1)) + list(permute_span(f,3,1,1))
+    sent_permutations = list(permute_span(f,1,1,4)) + list(permute_span(f,2,2,2)) + list(permute_span(f,2,1,2)) + list(permute_span(f,3,3,1)) + list(permute_span(f,3,2,1)) + list(permute_span(f,3,1,1))
     sent_permutations = set(sent_permutations)
     
     initial_hypothesis = hypothesis(0.0, lm.begin(), None, None)
