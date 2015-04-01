@@ -1,0 +1,65 @@
+#!/bin/sh
+
+#./decode -s 8 -i data/a > a.txt &
+#./decode -s 8 -i data/b > b.txt &
+#./decode -s 8 -i data/c > c.txt &
+
+#./decode -s 8 -i data/d > d.txt &
+#./decode -s 8 -i data/e > e.txt &
+
+
+./decode -s 10 -i data/xaa > xaa &
+./decode -s 10 -i data/xab > xab &
+./decode -s 10 -i data/xac > xac &
+./decode -s 10 -i data/xad > xad &
+./decode -s 10 -i data/xae > xae &
+./decode -s 10 -i data/xaf > xaf &
+./decode -s 10 -i data/xag > xag &
+./decode -s 10 -i data/xah > xah &
+./decode -s 10 -i data/xai > xai &
+./decode -s 10 -i data/xaj > xaj &
+./decode -s 10 -i data/xak > xak &
+./decode -s 10 -i data/xal > xal &
+./decode -s 10 -i data/xam > xam &
+./decode -s 10 -i data/xan > xan &
+./decode -s 10 -i data/xao > xao &
+./decode -s 10 -i data/xap > xap &
+./decode -s 10 -i data/xaq > xaq &
+./decode -s 10 -i data/xar > xar &
+./decode -s 10 -i data/xas > xas &
+./decode -s 10 -i data/xat > xat &
+./decode -s 10 -i data/xau > xau &
+./decode -s 10 -i data/xav > xav &
+./decode -s 10 -i data/xaw > xaw &
+./decode -s 10 -i data/xax > xax &
+./decode -s 10 -i data/xay > xay &
+./decode -s 10 -i data/xaz > xaz &
+./decode -s 10 -i data/xba > xba &
+./decode -s 10 -i data/xbb > xbb &
+./decode -s 10 -i data/xbc > xbc &
+./decode -s 10 -i data/xbd > xbd &
+./decode -s 10 -i data/xbe > xbe &
+./decode -s 10 -i data/xbf > xbf &
+./decode -s 10 -i data/xbg > xbg &
+./decode -s 10 -i data/xbh > xbh &
+./decode -s 10 -i data/xbi > xbi &
+./decode -s 10 -i data/xbj > xbj &
+./decode -s 10 -i data/xbk > xbk &
+./decode -s 10 -i data/xbl > xbl &
+./decode -s 10 -i data/xbm > xbm &
+./decode -s 10 -i data/xbn > xbn &
+./decode -s 10 -i data/xbo > xbo &
+./decode -s 10 -i data/xbp > xbp &
+./decode -s 10 -i data/xbq > xbq &
+./decode -s 10 -i data/xbr > xbr &
+./decode -s 10 -i data/xbs > xbs &
+./decode -s 10 -i data/xbt > xbt &
+./decode -s 10 -i data/xbu > xbu &
+./decode -s 10 -i data/xbv > xbv &
+./decode -s 10 -i data/xbw > xbw &
+./decode -s 10 -i data/xbx > xbx &
+./decode -s 10 -i data/xby > xby &
+./decode -s 10 -i data/xbz > xbz &
+./decode -s 10 -i data/xca > xca &
+./decode -s 10 -i data/xcb > xcb &
+./decode -s 10 -i data/xcc > xcc &
