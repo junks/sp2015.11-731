@@ -16,3 +16,10 @@ The `data/` directory contains the input set to be decoded and the models
 
  - `data/tm` is the phrase translation model
 
+
+
+I tried permuting the input string in different ways. For example, I permuted spans of length 2 to distances of 1 away, or spans of length 3 to distances of 2 away, etc.
+I ran the baseline decoder on all of these permuted strings (and the original), and chose the best result. From this best result, I took the input string that created it, and started over, recursively permuting that input string again. I did this until I could not get an improvement.
+
+
+
