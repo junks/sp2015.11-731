@@ -14,7 +14,9 @@ def read_ttable(filename):
 				     'log_lex_prob_tgs': features[2], \
 				     'log_lex_prob_sgt': features[3] }
 			translation_table[source][target] = features
-			sys.stderr.write('%d\r' % i)
+			
+			if i % 1000 == 0:
+				sys.stderr.write('%d\r' % i)
 	print >>sys.stderr
 	return translation_table
 
