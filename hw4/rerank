@@ -1,9 +1,11 @@
 #!/usr/bin/env python
-import sys
+import sys, time
 import argparse
 from collections import defaultdict
-from utils import read_ttable
+from utils import *
 from pprint import pprint
+from iterview import *
+from interning import *
 
 def dot(w, v):
     s = 0.0
@@ -11,19 +13,403 @@ def dot(w, v):
         s += w[k] * v[k]
     return s
 
+def dot_nested(w,v):
+    s = 0.0
+    for k1 in set(w.keys()) & set(v.keys()):
+        for k2 in set(w[k1].keys()) & set(v[k1].keys()):
+            for k3 in set(w[k1][k2]) & set(v[k1][k2]):
+                s += w[k1][k2][k3] * v[k1][k2][k3]
+    return s
+
+def sub(f1, f2):
+    """ f1 - f2 """
+    result = {item:f1[item] for item in f1}
+    for k in f2.keys():
+        value = f1.get(k,0.0) - f2[k]
+        result[k] = value
+    return result
+
+def sub_nested(f1, f2):
+    """ f1 - f2 """
+    result = {item:f1[item] for item in f1}
+
+    for k in f2.keys():
+        if f2[k]:
+            f1[k] = f1.get(k, {})
+            result[k] = {item:f1[k][item] for item in f1[k]}
+
+        for k2 in f2[k].keys():
+            if f2[k][k2]:
+                f1[k][k2] = f1[k].get(k2, {})
+                result[k][k2] = {item:f1[k][k2][item] for item in f1[k][k2]}
+
+            for k3 in f2[k][k2]:
+                value = f1[k][k2].get(k3, 0.0) - f2[k][k2][k3]
+                result[k][k2][k3] = value
+
+    return result
+
+def mult_value(w, alpha):
+    for item in w:
+        w[item] = w[item] * alpha
+    return w
+
+def mult_value_nested(w, alpha):
+    for k1 in w:
+        for k2 in w[k1]:
+            for k3 in w[k1][k2]:
+                w[k1][k2][k3] *= alpha
+    return w
+
+def output_predictions(predictions):
+    sys.stderr.write("OUTPUTING PREDICTIONS\n\n")
+    
+    f = open("output.txt", "w")
+    for prediction in predictions:
+        prediction = " ||| ".join(prediction).encode('utf-8')
+        f.write(prediction+"\n")
+    f.close()
+
+
 parser = argparse.ArgumentParser()
-parser.add_argument('--input', '-i', default='data/dev+test.input')
+parser.add_argument('--train_input', '-i', default='data/train.input')
+parser.add_argument('--train_refs', '-r', default='data/train.refs')
+parser.add_argument('--dev_input', '-a', default="data/dev+test.input")
+parser.add_argument('--dev_refs', '-b', default="data/dev.refs")
 parser.add_argument('--ttable', '-t', default='data/ttable')
+parser.add_argument("--train_parses", '-tp', default="data/train.parses")
+parser.add_argument("--dev_parses", '-dp', default="data/dev+test.parses")
 args = parser.parse_args()
 
+# Initial Weights
+weights_base = {'log_prob_tgs': 0.9,
+                "log_prob_sgt": 0.1,
+                "log_lex_prob_tgs": 0.0,
+                "log_lex_prob_sgt": 0.0}
+weights_words = {}
 translation_table = read_ttable(args.ttable)
-weights = {'log_prob_tgs': 0.9,
-           "log_prob_sgt": 0.1}
 
-for line in open(args.input):
+sys.stderr.write("READING PARSES\n")
+start = time.time()
+training_trees = []
+for tree in read_dep_trees(args.train_parses):
+    training_trees.append(tree)
+devtest_trees = []
+for tree in read_dep_trees(args.dev_parses):
+    devtest_trees.append(tree)
+end = time.time()
+sys.stderr.write("FINISHED READING PARSES ("+str(end-start)+")\n")
+
+
+
+
+#PREFIX = 1000
+
+i = 0
+lefts, phrases, rights, refs = [], [], [], []
+for line,ref in zip(open(args.train_input), open(args.train_refs)):
+
+    #if i > PREFIX:
+    #    break
+    ref = ref.decode("utf-8").strip()
     left_context, phrase, right_context = [part.strip() for part in line.decode('utf-8').strip().split('|||')]
-    candidates = [target for target, features in sorted(translation_table[phrase].iteritems(), key=lambda (t, f): dot(f, weights), reverse=True)]
-    print ' ||| '.join(candidates).encode('utf-8')
+    lefts.append(left_context)
+    phrases.append(phrase)
+    rights.append(right_context)
+    refs.append(ref)
+    i += 1
 
+
+dev_lefts, dev_phrases, dev_rights = [], [], []
+for line in open(args.dev_input):
+    left_context, phrase, right_context = [part.strip() for part in line.decode('utf-8').strip().split('|||')]
+    dev_lefts.append(left_context)
+    dev_phrases.append(phrase)
+    dev_rights.append(right_context)
+
+dev_refs = []
+for line in open(args.dev_refs):
+    line = line.decode('utf-8').strip()
+    dev_refs.append(line)
+
+
+def features(left,phrase,right,ref,tree):
+    resultfeatures = {}
+
+    i = 0
+    contextcut = 4
+    wordcut = 4
+
+    src_cut = phrase[:wordcut]
+    tgt_cut = ref[:wordcut]
+    src = phrase
+    tgt = ref
+
+    srcfeatures,tgtfeatures = {},{}
+    resultfeatures = {}
+
+    prev_tag, prevprev_tag = "",""
+    prev_word, prevprev_word = "",""
+
+    if left:
+        left = left.split()
+        i = len(left)
+
+        prev_tag = tree.tags[i-1]
+        #prev_word = left[-1][:wordcut]
+        #prev_word_feature = "prev:"+prev_word
+        #resultfeatures[prev_word_feature] = 1.0
+
+        if len(left) > 1:
+            prevprev_tag = tree.tags[i-2]
+            #prevprev_word = left[-2][:wordcut]
+            #prevprev_word_feature = "prevprev:"+prev_word
+            #resultfeatures[prevprev_word_feature] = 1.0
+
+        for word in left:
+            word = word[:contextcut]
+            word_feature = "context:"+word
+            resultfeatures[word_feature] = 1.0
+
+    next_tag = ""
+    nextnext_tag = ""
+    next_word, nextnext_word = "",""
+    if right:
+        right = right.split()
+        next_tag = tree.tags[i+1]
+        #next_word = right[0][:wordcut]
+        #next_word_feature = "next:"+next_word
+        #resultfeatures[next_word_feature] = 1.0
+
+        if len(right) > 1:
+            nextnext_tag = tree.tags[i+1]
+            #nextnext_word = right[1][:wordcut]
+            #nextnext_word_feature = "nextnext:"+nextnext_word
+            #resultfeatures[nextnext_word_feature] = 1.0
+            
+        for word in right:
+            word = word[:contextcut]
+            word_feature = "context:"+word
+            resultfeatures[word_feature] = 1.0
+
+    parent,relation = tree.parents[i]
+    parent_tag = "ROOT"
+    if not parent is None:
+        parent_tag = tree.tags[parent]
+
+    tgtfeatures[tgt] = resultfeatures
+    srcfeatures[src] = tgtfeatures
+
+    tgtfeatures[tgt_cut] = resultfeatures
+    srcfeatures[src_cut] = tgtfeatures
+
+    #prevtag_feature = base+"_prevtag:"+prev_tag
+    #prevprevtag_feature = base+"_prevprevtag:"+prevprev_tag
+    #nexttag_feature = base+"_nexttag:"+next_tag
+    #nextnexttag_feature = base+"_nextnexttag:"+nextnext_tag
     
-    #break
+    #parent_feature = base+"_parent:"+parent_tag+"_relation:"+relation
+
+    #resultfeatures[prevtag_feature] = 1.0
+    #resultfeatures[nexttag_feature] = 1.0
+    #resultfeatures[parent_feature] = 1.0
+
+    return srcfeatures
+
+#def internize(f):
+#    return {interning.intern(item):f[item] for item in f}
+
+
+def loss(weights_base, weights_words):
+    sys.stderr.write("CALCULATING CORPUS LOSS\n")
+    start = time.time()
+    
+    CORPUS_LOSS = 0.0
+    i = 0
+    for _ in iterview(xrange(len(refs))):
+        left,phrase,right,ref,tree = lefts[i],phrases[i],rights[i],refs[i],training_trees[i]
+        ref_features = features(left,phrase,right,ref,tree)
+        ref_base_features = translation_table[phrase][ref]
+
+        for target,target_base_features in translation_table[phrase].iteritems():
+            if target != ref:
+                target_features = features(left,phrase,right,target,tree)
+
+                result_base = sub(ref_base_features, target_base_features)
+                result_features = sub_nested(ref_features, target_features)
+                result = dot(weights_base, result_base) + dot_nested(weights_words, result_features)
+                
+                gamma = 1.0
+                term = max(0.0, gamma - result)
+                CORPUS_LOSS += term
+        i += 1
+
+    end = time.time()
+    sys.stderr.write("FINISHED CORPUS LOSS: ("+str(end-start)+")\n\n")
+    return CORPUS_LOSS
+
+
+def train(weights_base, weights_words):
+    sys.stderr.write("BEGIN TRAIN\n")
+    start = time.time()
+
+    i = 0
+    for _ in iterview(xrange(len(refs))):
+        left,phrase,right,ref,tree = lefts[i],phrases[i],rights[i],refs[i],training_trees[i]
+        ref_base_features = translation_table[phrase][ref]
+        ref_features = features(left,phrase,right,ref,tree)
+
+        for target,target_base_features in translation_table[phrase].iteritems():
+            if target != ref:
+                target_features = features(left,phrase,right,target,tree)
+                
+                result_base = sub(ref_base_features, target_base_features)
+                result_features = sub_nested(ref_features, target_features)
+                result = dot(weights_base, result_base) + dot_nested(weights_words, result_features)
+                
+                gamma = 1.0
+                term = max(0.0, gamma - result)
+                if term != 0.0:
+                    alpha = -0.01
+                    gradient_base = mult_value(result_base, alpha)
+                    weights_base = sub(weights_base, gradient_base)
+
+                    gradient_features = mult_value_nested(result_features, alpha)
+                    weights_words = sub_nested(weights_words, gradient_features)
+        i += 1
+    end = time.time()
+    sys.stderr.write("FINISHED TRAIN: ("+str(end-start)+")\n\n")
+    return weights_base, weights_words
+
+
+def test(weights_base, weights_words):
+    sys.stderr.write("BEGIN TEST\n")
+    start = time.time()
+
+    predictions = []
+    i = 0
+    for _ in iterview(xrange(len(dev_phrases))):
+        candidates = []
+        left_context,phrase,right_context,tree = dev_lefts[i],dev_phrases[i],dev_rights[i],devtest_trees[i]
+
+        for target,target_base_features in translation_table[phrase].iteritems():
+            target_features = features(left_context, phrase, right_context, target, tree)
+            result_base = dot(weights_base, target_base_features)
+            result_features = dot_nested(weights_words, target_features)
+            result = result_base + result_features
+            candidates.append((result, target))
+
+        candidates = sorted(candidates, reverse=True)
+        
+        #candidates = [target for target,target_base_features in translation_table[phrase].iteritems()]
+        #candidates = [(features(left_context, phrase, right_context, target,tree),target) for target in candidates]
+        #candidates = sorted([(dot(w,f),target) for f,target in candidates], reverse=True)
+        
+
+        candidates = [target for score,target in candidates]
+        
+
+              
+        #prediction = ' ||| '.join(candidates).encode('utf-8')
+        predictions.append(candidates)
+        i += 1
+    end = time.time()
+    sys.stderr.write("FINISHED TEST ("+str(end-start)+")\n")
+    return predictions
+
+def grade(predictions):
+    sys.stderr.write("BEGIN GRADING\n")
+    start = time.time()
+
+    score = 0.0
+    sentence_count = 0
+
+    for prediction,ref in zip(predictions, dev_refs):
+        for i, hyp in enumerate(prediction):
+            if hyp == ref:
+                score += 1.0 / (i+1)
+                break
+        sentence_count += 1 
+
+    end = time.time()
+    sys.stderr.write("FINISHED GRADING: ("+str(end-start)+")\n\n")
+    return score / sentence_count
+
+
+
+# Grades the existing output.txt file
+def grade_file():
+    sys.stderr.write("BEGIN GRADING FILE\n")
+    start = time.time()
+
+    score = 0.0
+    sentence_count = 0
+
+    for prediction, ref in zip(open("output.txt","r"), open(args.dev_refs)):
+        prediction = [item.strip() for item in prediction.decode('utf-8').strip().split("|||")]
+        ref = ref.decode('utf-8').strip()
+        
+        for i, hyp in enumerate(prediction):
+            if hyp == ref:
+                score += 1.0 / (i+1)
+                break
+        sentence_count += 1 
+
+    end = time.time()
+    sys.stderr.write("FINISHED GRADING FILE: ("+str(end-start)+")\n\n")
+    return score / sentence_count
+
+
+
+ITERATIONS  = 100
+
+CORPUS_LOSS = loss(weights_base, weights_words)
+predictions = test(weights_base, weights_words)
+SCORE = grade(predictions)
+FILE_SCORE = grade_file()
+BEST_SCORE = max(SCORE, FILE_SCORE)
+#output_predictions(predictions)
+
+print "STARTING LOSS:", CORPUS_LOSS
+#print "WEIGHTS:", weights
+print "STARTING SCORE:", SCORE
+print "BEST SCORE:", BEST_SCORE
+
+print
+
+
+#printOnce = True
+for i in xrange(ITERATIONS):
+    print "ITERATION:", i
+    start = time.time()
+    weights_base, weights_words = train(weights_base, weights_words)
+    #CORPUS_LOSS = loss(weights_base, weights_words)
+    predictions = test(weights_base, weights_words)
+    SCORE = grade(predictions)
+    FILE_SCORE = grade_file()
+    
+    if SCORE > BEST_SCORE and SCORE > FILE_SCORE:
+        BEST_SCORE = SCORE
+        output_predictions(predictions)
+
+    print
+    print "LENGTH OF WEIGHTS:", len(weights_base), len(weights_words)
+    #print i, "CORPUS LOSS:", CORPUS_LOSS
+    print i, "SCORE:", SCORE
+    print i, "BEST SCORE:", BEST_SCORE
+
+    end = time.time()
+    print "TIME ELAPSED:", end-start
+    print
+
+
+"""
+"""
+#output_predictions(predictions)
+
+
+CORPUS_LOSS = loss(weights_base, weights_words)
+print "CORPUS LOSS:", CORPUS_LOSS
+
+
+

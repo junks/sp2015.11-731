@@ -1,3 +1,23 @@
+The majority of my time went into trying to get the baseline system working. 
+
+Even after optimizations and speedups, the features ended up being so big that I couldn't run very many iterations in a single night.
+I tried cutting the source, target, and context word strings after four characters, and that helped a bit.
+
+I have tried taking every word in the sentence as a feature. as well as taking the POS tags of the word before, after, and the parent of the source word.
+
+None of these seemed to help, and after each iteration, my score would hover at 38 or 37 percent.
+
+
+
+
+
+
+
+
+
+
+
+
 There are three Python programs here (`-h` for usage):
 
  - `./rerank` a simple reranker that simply sorts candidate translations on log p(czech|english)
